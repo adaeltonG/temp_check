@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+model User {
+  id String @id @default(uuid())
+  email String @unique
+  firstName String
+  passwordHash String
+  inspections Inspection[]
+}
+model Outlet {
+  id String @id
+  level Int
+  location String
+  label String
+  note String?
+  sortOrder Int @unique
+  readings Reading[]
+}
+model Inspection {
+  id String @id @default(uuid())
+  inspectorName String
+  performedOn DateTime @db.Date
+  createdAt DateTime @default(now())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  readings Reading[]
+  @@index([performedOn, createdAt])
+}
+model Reading {
+  id String @id @default(uuid())
+  inspectionId String
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+  outletId String
+  outlet Outlet @relation(fields: [outletId], references: [id])
+  current Int
+  previous Int?
+  previousDate DateTime? @db.Date
+  @@unique([inspectionId, outletId])
+}
