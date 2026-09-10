@@ -1,39 +1,52 @@
 # Water Control and Management
 
-Next.js portal with JWT login → dashboard → weekly bottle refill checks. The **Temperature Logs** card serves the original `index.html`, `styles.css`, `app.js` and vendor files unchanged, through an authenticated Express route. Temperature records still use the existing browser-local database. New weekly checks use PostgreSQL through Prisma, with the Express API in `Api/`.
+Next.js inspection portal with an Express API and PostgreSQL/Prisma persistence. The dashboard provides shared weekly bottle-refill reports, the temperature-check form, and an admin-only Add User form.
 
-## Run locally
+## Weekly reports
 
-This workspace is configured for its own local PostgreSQL cluster on `127.0.0.1:5433`, database `cbredb`, with credentials in `Api/.env`. It uses the installed PostgreSQL 18 binaries and stores its data in the ignored `.local-postgres/` folder. Run `npm run db:local` to start it after a reboot, or `npm run db:local -- stop` to stop it. Then run `npm run dev` to start the application. This is a local process, not an installed Windows service. Set `POSTGRES_BIN` if the PostgreSQL binaries are installed elsewhere.
+- One shared report covers Monday–Sunday in Europe/London. The current week's draft is created automatically when accessed.
+- Everyone sees the saved station readings and can continue an open report over several days. Each saved station records its inspector, account, and date.
+- **Save inspection** keeps partial progress in the same report. Blank stations remain unfinished; zero is a valid reading.
+- **Submit** appears after every station has a reading. It saves any remaining changes and closes the report atomically. Filling all stations does not close a report by itself.
+- Regular users can edit any open report, including unfinished older weeks. A new week starts separately; it does not close older drafts.
+- Admins can correct closed reports. Closed reports retain all station readings and remain closed after corrections.
+- Previous readings come from earlier weeks, never another save in the same week. Corrections must remain between the preceding and following recorded counters. Historical corrections update later comparisons.
+- Concurrent changes to different stations merge. Changes to the same station require a reload and review; unsaved input remains visible until the user chooses to reload. Submission requires the latest report version.
+- History groups reports by week and supports loading older pages. Printable reports include status, contributors, and per-station saved names/dates.
 
-Requires Node.js 20.19+ (Node 22.12+ or 24 recommended), npm and PostgreSQL.
+Original Inspection and Reading database rows are retained as an archive. The weekly migration imports the latest reading per station per week into open reports, preserving legacy saves as activity records.
 
-1. Run `npm install` (use `npm.cmd` on Windows if PowerShell blocks npm scripts).
-2. Copy `Api/.env.example` to `Api/.env`. Set `DATABASE_URL` to a dedicated database, a random `JWT_SECRET` (at least 32 characters), and your initial account's `SEED_EMAIL`, `SEED_FIRST_NAME`, and `SEED_PASSWORD` (at least 8 characters). Generate a secret with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
-3. Start PostgreSQL. If Docker is available, `docker compose up -d` creates the local database matching the example URL. If port 5432 is occupied, use your existing server with a new database or change the Compose port and URL together.
-4. Run `npm run db:generate`, `npm run db:migrate`, then `npm run db:seed`.
-5. Run `npm run dev` and open http://localhost:3000. Sign in with your seeded account.
+## Accounts
 
-For production, run `npm run build`, then `npm start` with `NODE_ENV=production`, HTTPS, and `APP_ORIGIN` set to the exact public origin. The API binds to loopback port 4000 and is reached through Next.js rewrites. Keep the original temperature files alongside the app. The seed command creates accounts without resetting existing passwords. There is no public registration flow.
+Admins can use **Add User** at the dashboard's top right. Enter a first name, email and password, and optionally select **Admin**. Regular accounts cannot create users, even through the API. Passwords are hashed; duplicate emails cannot overwrite an existing account.
 
-## Weekly checks
+The seed command creates a new bootstrap account as an admin. It does not reset existing passwords or roles.
 
-- Name starts with the logged-in user's first name and remains editable. The account ID is also recorded for attribution.
-- The date is today's date in Europe/London, supplied and checked by the API. The input is read-only to keep it aligned with the current-reading heading.
-- Save one or more checked outlets; blank readings are omitted, and zero is a valid reading. Enter nonnegative whole-number counters.
-- Each outlet?s last reading comes from its own latest saved check, with its actual date displayed (it may be older than one week). Skipping an outlet preserves its previous reading and date. The first inspection establishes a baseline; no historical counter values are invented from the blank photo.
-- An increase shows **Used**, an equal counter shows **No change**, and a decrease is rejected for review. Counter replacement/reset handling is not yet implemented.
-- Reports preserve the previous counter and date at save time, group by level, and support printing / saving PDF. History shows the latest 100 inspections.
-- Concurrent submissions use a PostgreSQL transaction lock and baseline ID comparison. A stale form must refresh and review its readings before submitting.
+## Local setup
 
-## Photo transcription
+Requires Node.js 20.19+ and PostgreSQL.
 
-Source data is in `Api/prisma/outlets.js`: Levels 02 and 06–18, three refill stations per level. Level 02 station 1's suffix is unreadable; Level 07 station 2 appears to say `6050` and is retained with a verification note; Level 18 station labels are cropped, so station numbers 1–3 are inferred and marked. Levels 14–18 have no visible room suffix. Verify these entries on site before operational use. The photo's procedural text has not been treated as application instructions.
+1. Run `npm install` (`npm.cmd` on Windows if PowerShell blocks npm scripts).
+2. Copy `Api/.env.example` to `Api/.env` and configure a dedicated `DATABASE_URL`, random `JWT_SECRET`, and initial `SEED_EMAIL`, `SEED_FIRST_NAME`, and `SEED_PASSWORD`.
+3. Run `npm run db:generate`, `npm run db:migrate`, and `npm run db:seed`.
+4. Run `npm run dev`, then open http://localhost:3000.
 
-## Validation
+The optional `npm run db:local` helper starts the project's local Windows PostgreSQL cluster when previously configured. Docker users can use `docker compose up -d` with an appropriate database URL.
 
-`npm run build` checks the Next.js production build. `npm test` covers authentication and reading validation. To run the database lifecycle/concurrency test, apply migrations to a fresh, separate test database and set `TEST_DATABASE_URL` before running `npm test`. The integration test inserts test records and requires an empty inspection table; never point it at operational data.
+## Formatting and checks
 
-After the integration test, start the app against that same isolated database, set `RUN_BROWSER_TESTS=1`, and run `node scripts/browser-check.mjs` for a Microsoft Edge browser check (Edge must be installed). It checks login, cards, all 42 readings, saving, reports, mobile overflow, and the original temperature form. Screenshots go into the ignored `.test-artifacts/` folder. Browser credentials are test fixtures only.
+- `npm run format` formats hand-authored source with Prettier.
+- `npm run format:check` checks formatting.
+- `npx prisma format --schema Api/prisma/schema.prisma` formats the database schema.
+- `npm test` runs API authorization and pure validation/date tests. Database integration is skipped unless `TEST_DATABASE_URL` is set.
+- `npm run build` checks the production build.
 
-Framework references: [Next.js installation](https://nextjs.org/docs/app/getting-started/installation), [Prisma PostgreSQL setup](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
+The real weekly integration test requires a fresh, dedicated database named `cbre_weekly_test_<suffix>`. Set `TEST_DATABASE_URL`, run `node scripts/prepare-weekly-test.mjs`, then `npm test`. Preparation applies the actual migrations around legacy fixture data. Never use an operational database.
+
+`RUN_BROWSER_TESTS=1 TEST_BASE_URL=http://127.0.0.1:13300/cbre node scripts/browser-check.mjs` exercises the complete collaborative workflow against the isolated test fixture app. It writes fixture readings and requires the test app's clock to be 21 September 2026. `node scripts/partial-browser-check.mjs` checks zero/partial saves using mocked API responses. Both scripts use installed Microsoft Edge and accept only loopback targets.
+
+## Production
+
+See [deployment notes](deploy/README.md). CBRE is installed at `/var/www/cbre` and served below `/cbre`. Dedicated services run the frontend on loopback port 3200 and the API on 4300. Preserve the private environment files when deploying. Build in staging, back up the database and current build, apply migrations, and restart only the CBRE services.
+
+The temperature form retains its browser-local database behavior. Source formatting does not migrate or erase browser-stored temperature records.

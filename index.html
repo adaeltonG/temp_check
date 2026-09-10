@@ -1,53 +1,114 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Water Control and Management</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="topline"></div>
-  <header class="masthead">
-    
-    
-    <br><br><h1>Water Control and Management</h1>
-    <p class="subtitle">Hot and Cold Water Temperature Checks</p>
-    <button id="historyButton" class="history-button" type="button" disabled><span aria-hidden="true">≡</span> History</button>
-  </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Water Control and Management</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="topline"></div>
+    <header class="masthead">
+      <br /><br />
+      <h1>Water Control and Management</h1>
+      <p class="subtitle">Hot and Cold Water Temperature Checks</p>
+      <button id="historyButton" class="history-button" type="button" disabled>
+        <span aria-hidden="true">≡</span> History
+      </button>
+    </header>
 
-  <main>
-    <section id="startup" class="startup" role="status"><span class="loader" aria-hidden="true"></span><span>Preparing secure local storage…</span></section>
-    <form id="checkForm" novalidate aria-busy="true">
-      <section class="identity" aria-labelledby="record-heading">
-        <div class="section-kicker"><span>01</span><h2 id="record-heading">Inspection record</h2></div>
-        <div class="identity-fields">
-          <label>Name <input id="inspectorName" name="name" autocomplete="name" required disabled placeholder="Name"></label>
-          <label>Date <input id="checkDate" name="date" type="text" inputmode="numeric" placeholder="DD/MM/YYYY" pattern="(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/\d{4}" maxlength="10" autocomplete="off" required disabled aria-describedby="dateHint"></label>
-        </div>
+    <main>
+      <section id="startup" class="startup" role="status">
+        <span class="loader" aria-hidden="true"></span
+        ><span>Preparing secure local storage…</span>
       </section>
+      <form id="checkForm" novalidate aria-busy="true">
+        <section class="identity" aria-labelledby="record-heading">
+          <div class="section-kicker">
+            <span>01</span>
+            <h2 id="record-heading">Inspection record</h2>
+          </div>
+          <div class="identity-fields">
+            <label
+              >Name
+              <input
+                id="inspectorName"
+                name="name"
+                autocomplete="name"
+                required
+                disabled
+                placeholder="Name"
+            /></label>
+            <label
+              >Date
+              <input
+                id="checkDate"
+                name="date"
+                type="text"
+                inputmode="numeric"
+                placeholder="DD/MM/YYYY"
+                pattern="(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/\d{4}"
+                maxlength="10"
+                autocomplete="off"
+                required
+                disabled
+                aria-describedby="dateHint"
+            /></label>
+          </div>
+        </section>
 
-      <section class="checks" aria-labelledby="checks-heading">
-        <div class="section-heading">
-          <div class="section-kicker"><span>02</span><h2 id="checks-heading">Temperature checks</h2></div>
-          
+        <section class="checks" aria-labelledby="checks-heading">
+          <div class="section-heading">
+            <div class="section-kicker">
+              <span>02</span>
+              <h2 id="checks-heading">Temperature checks</h2>
+            </div>
+          </div>
+          <div class="progress-wrap" aria-label="Form progress">
+            <div class="progress-label">
+              <span>Recorded locations</span><strong id="progressText">0 / 0</strong>
+            </div>
+            <div class="progress"><span id="progressBar"></span></div>
+          </div>
+          <div id="levels"></div>
+        </section>
+
+        <div class="submit-dock">
+          <p><strong>Ready to file?</strong></p>
+          <button id="submitButton" class="primary" disabled>Save inspection</button>
         </div>
-        <div class="progress-wrap" aria-label="Form progress"><div class="progress-label"><span>Recorded locations</span><strong id="progressText">0 / 0</strong></div><div class="progress"><span id="progressBar"></span></div></div>
-        <div id="levels"></div>
-      </section>
+      </form>
+    </main>
 
-      <div class="submit-dock"><p><strong>Ready to file?</strong></p><button id="submitButton" class="primary" disabled>Save inspection</button></div>
-    </form>
-  </main>
-
-  <dialog id="historyDialog" aria-labelledby="historyTitle">
-    <div class="dialog-head"><div><p class="eyebrow">LOCAL RECORDS</p><h2 id="historyTitle">Inspection history</h2></div><button class="icon-button" id="closeHistory" type="button" aria-label="Close history">×</button></div>
-    <div class="dialog-tools"><button id="exportDb" type="button">Export database</button><label class="file-button">Import database<input id="importDb" type="file" accept=".sqlite,.db,application/vnd.sqlite3"></label></div>
-    <div id="historyContent"></div>
-  </dialog>
-  <div id="announcer" class="sr-only" aria-live="polite"></div>
-  <script src="vendor/sql-wasm.js"></script>
-  <script src="vendor/sql-wasm-data.js"></script>
-  <script src="app.js"></script>
-</body>
+    <dialog id="historyDialog" aria-labelledby="historyTitle">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">LOCAL RECORDS</p>
+          <h2 id="historyTitle">Inspection history</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="closeHistory"
+          type="button"
+          aria-label="Close history"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-tools">
+        <button id="exportDb" type="button">Export database</button
+        ><label class="file-button"
+          >Import database<input
+            id="importDb"
+            type="file"
+            accept=".sqlite,.db,application/vnd.sqlite3"
+        /></label>
+      </div>
+      <div id="historyContent"></div>
+    </dialog>
+    <div id="announcer" class="sr-only" aria-live="polite"></div>
+    <script src="vendor/sql-wasm.js"></script>
+    <script src="vendor/sql-wasm-data.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

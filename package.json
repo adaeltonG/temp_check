@@ -13,7 +13,9 @@
     "db:migrate": "npm run db:migrate --workspace Api",
     "db:seed": "npm run db:seed --workspace Api",
     "db:local": "node scripts/local-postgres.mjs",
-    "test": "npm test --workspace Api"
+    "test": "npm test --workspace Api",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "next": "^16.1.0",
@@ -22,7 +24,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "prettier": "3.6.2"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2",

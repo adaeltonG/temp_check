@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.git/
+vendor/
+package-lock.json
+Api/generated/
+.test-artifacts/
+.local-postgres/
+.test-postgres/
+deploy/backups/
+deploy/releases/
+*.sql

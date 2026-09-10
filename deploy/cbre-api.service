@@ -1,0 +1,22 @@
+[Unit]
+Description=CBRE inspection API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=cbre
+Group=cbre
+WorkingDirectory=/var/www/cbre/Api
+EnvironmentFile=/var/www/cbre/Api/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

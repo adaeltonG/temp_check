@@ -1,43 +1,101 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
 }
+
 model User {
-  id String @id @default(uuid())
-  email String @unique
-  firstName String
-  passwordHash String
-  inspections Inspection[]
+  id               String           @id @default(uuid())
+  email            String           @unique
+  firstName        String
+  passwordHash     String
+  isAdmin          Boolean          @default(false)
+  inspections      Inspection[]
+  weeklyReadings   WeeklyReading[]  @relation("WeeklyReadingAuthor")
+  closedReports    WeeklyReport[]   @relation("WeeklyReportCloser")
+  reportActivities ReportActivity[]
 }
+
 model Outlet {
-  id String @id
-  level Int
-  location String
-  label String
-  note String?
-  sortOrder Int @unique
-  readings Reading[]
+  id             String          @id
+  level          Int
+  location       String
+  label          String
+  note           String?
+  sortOrder      Int             @unique
+  readings       Reading[]
+  weeklyReadings WeeklyReading[]
 }
+
 model Inspection {
-  id String @id @default(uuid())
+  id            String    @id @default(uuid())
   inspectorName String
-  performedOn DateTime @db.Date
-  createdAt DateTime @default(now())
-  userId String
-  user User @relation(fields: [userId], references: [id])
-  readings Reading[]
+  performedOn   DateTime  @db.Date
+  createdAt     DateTime  @default(now())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  readings      Reading[]
+
   @@index([performedOn, createdAt])
 }
+
 model Reading {
-  id String @id @default(uuid())
+  id           String     @id @default(uuid())
   inspectionId String
-  inspection Inspection @relation(fields: [inspectionId], references: [id])
-  outletId String
-  outlet Outlet @relation(fields: [outletId], references: [id])
-  current Int
-  previous Int?
-  previousDate DateTime? @db.Date
+  inspection   Inspection @relation(fields: [inspectionId], references: [id])
+  outletId     String
+  outlet       Outlet     @relation(fields: [outletId], references: [id])
+  current      Int
+  previous     Int?
+  previousDate DateTime?  @db.Date
+
   @@unique([inspectionId, outletId])
+}
+
+model WeeklyReport {
+  id         String           @id @default(uuid())
+  weekStart  DateTime         @unique @db.Date
+  isClosed   Boolean          @default(false)
+  version    Int              @default(0)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  closedAt   DateTime?
+  closedById String?
+  closedBy   User?            @relation("WeeklyReportCloser", fields: [closedById], references: [id])
+  readings   WeeklyReading[]
+  activities ReportActivity[]
+}
+
+model WeeklyReading {
+  id            String       @id @default(uuid())
+  reportId      String
+  report        WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  outletId      String
+  outlet        Outlet       @relation(fields: [outletId], references: [id])
+  current       Int?
+  version       Int          @default(1)
+  inspectorName String
+  recordedOn    DateTime     @db.Date
+  recordedById  String
+  recordedBy    User         @relation("WeeklyReadingAuthor", fields: [recordedById], references: [id])
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([reportId, outletId])
+  @@index([outletId])
+}
+
+model ReportActivity {
+  id            String       @id @default(uuid())
+  reportId      String
+  report        WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  inspectorName String
+  action        String
+  changes       Json
+  createdAt     DateTime     @default(now())
+
+  @@index([reportId, createdAt])
 }

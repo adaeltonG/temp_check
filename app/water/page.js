@@ -1,47 +1,502 @@
-'use client';
+﻿'use client';
+
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, useUser, Header, date, usage } from '../lib';
+import WeeklyReport, { WeekHeading } from './WeeklyReport';
 
-export default function Water() {
-  const { user, error: userError } = useUser(); const router = useRouter();
-  const [baseline, setBaseline] = useState(null); const [name, setName] = useState('');
-  const [values, setValues] = useState({}); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  const [history, setHistory] = useState(null); const [report, setReport] = useState(null); const [saved, setSaved] = useState(false);
-  function fail(e) { setError(e.message); if (e.status === 401) router.replace('/login'); }
-  async function refresh() { setError(''); try { setBaseline(await api('/water/baseline')); } catch (e) { fail(e); } }
-  useEffect(() => { if (user) { setName(user.firstName); api('/water/baseline').then(setBaseline).catch(e => { setError(e.message); if (e.status === 401) router.replace('/login'); }); } }, [user, router]);
-  const previous = Object.fromEntries((baseline?.outlets || []).filter(o => o.lastReading).map(o => [o.id, o.lastReading.current]));
-  const previousDates = [...new Set((baseline?.outlets || []).filter(o => o.lastReading).map(o => o.lastReading.performedOn))];
-  const done = Object.values(values).filter(v => v !== '').length;
-  async function loadHistory() { setError(''); setSaved(false); try { setHistory(await api('/water/inspections')); setReport(null); } catch (e) { fail(e); } }
-  async function openReport(id) { setError(''); try { setReport(await api(`/water/inspections/${id}`)); } catch (e) { fail(e); } }
-  async function save(event) {
-    event.preventDefault(); setError(''); setBusy(true);
-    try {
-      const result = await api('/water/inspections', { method: 'POST', body: JSON.stringify({ inspectorName: name.trim(), performedOn: baseline.today, baselineId: baseline.previous?.id || null, readings: baseline.outlets.filter(o => values[o.id] !== undefined && values[o.id] !== '').map(o => ({ outletId: o.id, current: Number(values[o.id]) })) }) });
-      setValues({}); setSaved(true); await openReport(result.id); await refresh();
-    } catch (e) { fail(e); } finally { setBusy(false); }
-  }
-  if (!user) return <main><p role="status">{userError || 'Checking your session…'}</p></main>;
-  return <><Header title="Water Control and Management" subtitle="Weekly bottle refill counter checks"><Link href="/dashboard">← Dashboard</Link><button onClick={loadHistory}>Inspection history</button></Header><main>
-    {error && <div className="notice error" role="alert">{error} <button type="button" onClick={refresh}>Refresh baseline</button></div>}
-    {saved && <p className="notice" role="status">Inspection saved successfully.</p>}
-    {report ? <Report report={report} onBack={() => { setReport(null); setSaved(false); }} /> : history ? <section className="history-panel"><div className="panel-heading"><h2>Inspection history</h2><button onClick={() => setHistory(null)}>Back to check</button></div><p className="field-hint">Latest 100 inspections</p>{history.length === 0 ? <p>No inspections saved yet.</p> : history.map(item => <article className="history-row" key={item.id}><div><h3>{item.inspectorName}</h3><p>{item._count.readings} recorded outlets</p></div><time>{date(item.performedOn)}</time><button onClick={() => openReport(item.id)}>View report</button></article>)}</section> : !baseline ? <p role="status">Loading outlets…</p> : <form onSubmit={save}>
-      <section className="identity"><div className="section-kicker"><span>01</span><h2>Inspection record</h2></div><div className="identity-fields"><label>Name<input value={name} onChange={e => setName(e.target.value)} autoComplete="name" maxLength={100} required /></label><label>Date<input type="text" value={date(baseline.today)} readOnly aria-describedby="date-note" /></label></div><p id="date-note" className="field-hint">Today’s check date · Europe/London. You can change the name if someone else is performing the check.</p></section>
-      <section className="checks"><div className="section-kicker"><span>02</span><h2>Bottle refill readings</h2></div><p>Enter each dispenser’s cumulative bottle counter. Save any outlets you have checked; leave the others blank. An increase means used; an unchanged number means no use since that outlet?s last check.</p>{!baseline.previous && <p className="notice">No previous inspection yet. These readings will establish your first baseline.</p>}
-      <div className="progress-wrap"><div className="progress-label"><span>Recorded outlets</span><strong>{done} / {baseline.outlets.length}</strong></div><div className="progress"><span style={{ width: `${baseline.outlets.length ? done / baseline.outlets.length * 100 : 0}%` }} /></div></div>
-      <div className="table-scroll"><table className="water-table"><thead><tr><th scope="col">Location</th><th scope="col">Outlet</th><th scope="col" className="reading-heading">Last reading<small>{previousDates.length > 1 ? 'Dates shown per outlet' : date(previousDates[0])}</small></th><th scope="col" className="reading-heading">Current reading<small>{date(baseline.today)}</small></th></tr></thead><tbody>{baseline.outlets.map(outlet => {
-        const value = values[outlet.id] ?? ''; const old = previous[outlet.id]; const status = value === '' ? '' : usage(Number(value), old);
-        return <tr key={outlet.id}><th scope="row">{outlet.location}{outlet.note && <small className="source-note">Verify: {outlet.note}</small>}</th><td>{outlet.label}</td><td className="reading-value">{old ?? '—'}</td><td><input aria-label={`${outlet.location}, ${outlet.label}, current reading`} type="number" min={old ?? 0} max="2147483647" step="1" inputMode="numeric" value={value} onChange={e => setValues(current => ({ ...current, [outlet.id]: e.target.value }))} /><span className={`usage ${status === 'No change' || status === 'Check reading' ? 'unchanged' : ''}`} aria-live="polite">{status || 'Awaiting reading'}</span></td></tr>;
-      })}</tbody></table></div></section><div className="submit-dock"><p><strong>Ready to file?</strong><span>{done} of {baseline.outlets.length} outlets recorded</span></p><button className="primary" disabled={busy || done === 0}>{busy ? 'Saving…' : 'Save inspection'}</button></div>
-    </form>}
-  </main></>;
+function savedValues(report) {
+  return Object.fromEntries(
+    report.outlets.map((outlet) => [
+      outlet.id,
+      outlet.reading?.current == null ? '' : String(outlet.reading.current),
+    ]),
+  );
 }
 
-function Report({ report, onBack }) {
-  const levels = [...new Set(report.readings.map(r => r.outlet.level))];
-  const unchanged = report.readings.filter(r => r.previous !== null && r.current === r.previous).length;
-  return <section className="detail water-report"><div className="panel-heading no-print"><button onClick={onBack}>← Back</button><button onClick={() => window.print()}>Print report / Save PDF</button></div><header className="report-header"><div><p className="report-overline">WEEKLY WATER INSPECTION REPORT</p><h3>{report.inspectorName}</h3><time>{date(report.performedOn)}</time></div><p className="report-summary">{report.readings.length} recorded outlets<br />{unchanged} with no change</p></header>{levels.map(level => <section className="report-level" key={level}><h4>Level {String(level).padStart(2, '0')}</h4>{report.readings.filter(r => r.outlet.level === level).map(r => <article className="water-report-row" key={r.id}><div><strong>{r.outlet.location}</strong><p>{r.outlet.label}</p>{r.outlet.note && <small className="source-note">Verify: {r.outlet.note}</small>}</div><div className="reading-metrics"><div className="report-metric"><span className="report-metric-label">Last reading</span><small>{date(r.previousDate)}</small><strong className="report-metric-value">{r.previous ?? '—'}</strong></div><div className="report-metric"><span className="report-metric-label">Current reading</span><small>{date(report.performedOn)}</small><strong className="report-metric-value">{r.current}</strong></div></div><span className={`usage ${r.previous !== null && r.current === r.previous ? 'unchanged' : ''}`}>{usage(r.current, r.previous)}</span></article>)}</section>)}</section>;
+export default function Water() {
+  const { user, error: userError } = useUser();
+  const router = useRouter();
+  const [report, setReport] = useState(null);
+  const [values, setValues] = useState({});
+  const [name, setName] = useState('');
+  const [mode, setMode] = useState('edit');
+  const [history, setHistory] = useState([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const pending = useRef(false);
+  const form = useRef(null);
+
+  const changes = (report?.outlets || []).filter((outlet) => {
+    const value = values[outlet.id] ?? '';
+    return (value === '' ? null : Number(value)) !== (outlet.reading?.current ?? null);
+  });
+  const dirty = changes.length > 0;
+  const completed = (report?.outlets || []).filter(
+    (outlet) => values[outlet.id] !== '' && values[outlet.id] !== undefined,
+  ).length;
+  const complete = Boolean(report && completed === report.totalOutlets);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    pending.current = true;
+    setBusy(true);
+    setName(user.firstName);
+    api('/water/reports/current')
+      .then((result) => {
+        if (!active) return;
+        setReport(result);
+        setValues(savedValues(result));
+        setMode(result.isClosed ? 'view' : 'edit');
+      })
+      .catch((e) => {
+        if (!active) return;
+        setError(e.message);
+        if (e.status === 401) router.replace('/login');
+      })
+      .finally(() => {
+        if (active) {
+          pending.current = false;
+          setBusy(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, router]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  function canLeave() {
+    return !dirty || window.confirm('Discard your unsaved readings?');
+  }
+
+  function fail(e) {
+    setError(e.message);
+    if (e.status === 401) router.replace('/login');
+  }
+
+  function adopt(result, nextMode) {
+    setReport(result);
+    setValues(savedValues(result));
+    setMode(nextMode || (result.isClosed ? 'view' : 'edit'));
+  }
+
+  async function loadReport(id = 'current', nextMode) {
+    if (pending.current || !canLeave()) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      adopt(await api(`/water/reports/${id}`), nextMode);
+    } catch (e) {
+      fail(e);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function loadHistory(before) {
+    if (pending.current || !canLeave()) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const query = before ? `?before=${encodeURIComponent(before)}` : '';
+      const page = await api(`/water/reports${query}`);
+      setHistory((current) => (before ? [...current, ...page] : page));
+      setHasMoreHistory(page.length === 100);
+      if (report) setValues(savedValues(report));
+      setMode('history');
+    } catch (e) {
+      fail(e);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function save(action) {
+    if (pending.current || !report || !form.current.reportValidity()) return;
+    if (action === 'save' && !dirty) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api(`/water/reports/${report.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          inspectorName: name.trim(),
+          version: report.version,
+          action,
+          readings: changes.map((outlet) => ({
+            outletId: outlet.id,
+            current: values[outlet.id] === '' ? null : Number(values[outlet.id]),
+            version: outlet.reading?.version ?? 0,
+          })),
+        }),
+      });
+      adopt(result, action === 'submit' ? 'view' : 'edit');
+      setNotice(action === 'submit' ? 'Report submitted and closed.' : 'Progress saved.');
+    } catch (e) {
+      fail(e);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  function viewSaved() {
+    if (!canLeave()) return;
+    setValues(savedValues(report));
+    setMode('view');
+    setError('');
+    setNotice('');
+  }
+
+  if (!user)
+    return (
+      <main>
+        <p role="status">{userError || 'Checking your session…'}</p>
+      </main>
+    );
+
+  return (
+    <>
+      <Header
+        title="Water Control and Management"
+        subtitle="Shared weekly bottle refill counter checks"
+      >
+        <Link
+          href="/dashboard"
+          onClick={(event) => {
+            if (busy || !canLeave()) event.preventDefault();
+          }}
+        >
+          ← Dashboard
+        </Link>
+        <button type="button" disabled={busy} onClick={() => loadHistory()}>
+          Inspection history
+        </button>
+      </Header>
+      <main className="weekly-page">
+        {error && (
+          <div className="notice error no-print" role="alert">
+            <p>{error}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                loadReport(report?.id || 'current', mode === 'history' ? undefined : mode)
+              }
+            >
+              Reload saved report
+            </button>
+          </div>
+        )}
+        {notice && (
+          <p className="notice" role="status">
+            {notice}
+          </p>
+        )}
+        {busy && (
+          <p className="weekly-loading no-print" role="status">
+            Updating report…
+          </p>
+        )}
+        {mode === 'history' ? (
+          <section className="history-panel">
+            <div className="panel-heading">
+              <h2>Weekly reports</h2>
+              <button type="button" disabled={busy} onClick={() => loadReport()}>
+                Back to current week
+              </button>
+            </div>
+            <p className="field-hint">
+              One report per week. Older incomplete weeks stay open for the team to
+              finish.
+            </p>
+            {history.length === 0 ? (
+              <p>No weekly reports yet.</p>
+            ) : (
+              history.map((item) => (
+                <article className="weekly-history-row" key={item.id}>
+                  <div>
+                    <h3>
+                      {date(item.weekStart)} – {date(item.weekEnd)}
+                    </h3>
+                    <p>
+                      <span className={`weekly-status ${item.isClosed ? 'closed' : ''}`}>
+                        {item.isClosed ? 'Closed' : 'Open'}
+                      </span>{' '}
+                      {item.completedOutlets} / {item.totalOutlets} outlets saved
+                    </p>
+                    <p>
+                      Contributors:{' '}
+                      {item.contributors.map((person) => person.firstName).join(', ') ||
+                        'None yet'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => loadReport(item.id, item.isClosed ? 'view' : 'edit')}
+                  >
+                    {item.isClosed ? 'View report' : 'Continue report'}
+                  </button>
+                </article>
+              ))
+            )}
+            {hasMoreHistory && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => loadHistory(history[history.length - 1].weekStart)}
+              >
+                {busy ? 'Loading older weeks…' : 'Load older weeks'}
+              </button>
+            )}
+          </section>
+        ) : !report ? (
+          <p role="status">
+            {error
+              ? 'The weekly report could not be loaded.'
+              : 'Loading this week’s report…'}
+          </p>
+        ) : (
+          <>
+            <div className="weekly-toolbar no-print">
+              <button type="button" disabled={busy} onClick={() => loadReport()}>
+                Back to current week
+              </button>
+              {mode === 'edit' ? (
+                <button type="button" disabled={busy} onClick={viewSaved}>
+                  View / print saved report
+                </button>
+              ) : (
+                <div className="weekly-toolbar-actions">
+                  {report.canEdit && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setMode('edit');
+                        setNotice('');
+                      }}
+                    >
+                      {report.isClosed ? 'Edit report' : 'Continue report'}
+                    </button>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => window.print()}>
+                    Print report / Save PDF
+                  </button>
+                </div>
+              )}
+            </div>
+            {mode === 'view' || !report.canEdit ? (
+              <WeeklyReport report={report} />
+            ) : (
+              <>
+                <form
+                  ref={form}
+                  className="weekly-form no-print"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    save('save');
+                  }}
+                >
+                  <WeekHeading report={report} />
+                  {report.isClosed ? (
+                    <p className="notice">
+                      You are correcting a closed report. Saving keeps it closed.
+                    </p>
+                  ) : (
+                    <p className="weekly-guidance">
+                      Save readings as you go. Your team can continue this report on
+                      another day. Submit once all outlets are recorded.
+                    </p>
+                  )}
+                  <fieldset disabled={busy} className="weekly-fields">
+                    <section className="identity">
+                      <div className="section-kicker">
+                        <span>01</span>
+                        <h2>Inspection record</h2>
+                      </div>
+                      <div className="identity-fields">
+                        <label>
+                          Name
+                          <input
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
+                            autoComplete="name"
+                            maxLength={100}
+                            required
+                            pattern=".*\S.*"
+                          />
+                        </label>
+                        <label>
+                          Today
+                          <input type="text" value={date(report.today)} readOnly />
+                        </label>
+                      </div>
+                    </section>
+                    <section className="checks">
+                      <div className="section-kicker">
+                        <span>02</span>
+                        <h2>Bottle refill readings</h2>
+                      </div>
+                      <div className="progress-wrap">
+                        <div className="progress-label">
+                          <span>Outlets entered{dirty ? ' · unsaved changes' : ''}</span>
+                          <strong>
+                            {completed} / {report.totalOutlets}
+                          </strong>
+                        </div>
+                        <progress
+                          className="weekly-progress"
+                          aria-label="Outlets entered"
+                          value={completed}
+                          max={report.totalOutlets}
+                        />
+                      </div>
+                      <div className="table-scroll">
+                        <table className="water-table weekly-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Location</th>
+                              <th scope="col">Outlet</th>
+                              <th scope="col" className="reading-heading">
+                                Previous reading<small>Last saved date below</small>
+                              </th>
+                              <th scope="col" className="reading-heading">
+                                This week<small>Saved name and date below</small>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {report.outlets.map((outlet) => {
+                              const value = values[outlet.id] ?? '';
+                              const previous = outlet.lastReading?.current;
+                              const status =
+                                value === ''
+                                  ? 'Awaiting reading'
+                                  : usage(Number(value), previous);
+                              return (
+                                <tr key={outlet.id}>
+                                  <th scope="row">
+                                    {!/\blevel\b/i.test(outlet.location) && (
+                                      <small className="weekly-level">
+                                        Level {String(outlet.level).padStart(2, '0')}
+                                      </small>
+                                    )}
+                                    {outlet.location}
+                                    {outlet.note && (
+                                      <small className="source-note">
+                                        Verify: {outlet.note}
+                                      </small>
+                                    )}
+                                  </th>
+                                  <td>{outlet.label}</td>
+                                  <td className="reading-value">
+                                    {previous ?? '—'}
+                                    <small className="last-reading-date">
+                                      {outlet.lastReading
+                                        ? date(outlet.lastReading.recordedOn)
+                                        : 'No previous reading'}
+                                    </small>
+                                  </td>
+                                  <td>
+                                    <input
+                                      aria-label={`${outlet.location}, ${outlet.label}, current reading`}
+                                      type="number"
+                                      min={previous ?? 0}
+                                      max="2147483647"
+                                      step="1"
+                                      inputMode="numeric"
+                                      required={report.isClosed}
+                                      value={value}
+                                      onChange={(event) =>
+                                        setValues((current) => ({
+                                          ...current,
+                                          [outlet.id]: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <span
+                                      className={`usage ${status === 'No change' || status === 'Check reading' ? 'unchanged' : ''}`}
+                                    >
+                                      {status}
+                                    </span>
+                                    <small className="weekly-saved-by">
+                                      {outlet.reading?.current != null
+                                        ? `Saved ${date(outlet.reading.recordedOn)} · ${outlet.reading.inspectorName}`
+                                        : 'Not saved yet'}
+                                    </small>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </fieldset>
+                  <div className="submit-dock weekly-submit">
+                    <p>
+                      <strong>
+                        {report.isClosed
+                          ? 'Report corrections'
+                          : complete
+                            ? 'All outlets recorded'
+                            : 'Save your progress'}
+                      </strong>
+                      <span>
+                        {dirty
+                          ? 'You have unsaved readings.'
+                          : 'All entered readings are saved.'}
+                      </span>
+                    </p>
+                    <div className="weekly-toolbar-actions">
+                      <button type="submit" className="primary" disabled={busy || !dirty}>
+                        {busy ? 'Saving…' : 'Save inspection'}
+                      </button>
+                      {!report.isClosed && complete && (
+                        <button
+                          type="button"
+                          className="primary"
+                          disabled={busy}
+                          onClick={() => save('submit')}
+                        >
+                          Submit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </form>
+                <div className="weekly-print-only">
+                  <WeeklyReport report={report} />
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </main>
+    </>
+  );
 }
